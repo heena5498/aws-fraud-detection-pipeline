@@ -1,0 +1,185 @@
+# Fraud Detection Pipeline Configuration
+
+# Data Paths
+data:
+  raw_data_path: "data/raw/transactions.csv"
+  bronze_path: "data/bronze/"
+  silver_path: "data/silver/"
+  gold_path: "data/gold/"
+  s3_bucket: "fraud-detection-data"  # Optional
+  s3_prefix: "fraud-pipeline/"
+
+# ETL Configuration
+etl:
+  batch_size: 10000
+  chunk_size: 50000
+  dedupe_columns: ["transaction_id", "timestamp"]
+  
+  # Feature Engineering Windows
+  velocity_windows:
+    - 1h
+    - 6h
+    - 24h
+    - 7d
+  
+  # Silver Layer Features
+  features:
+    user:
+      - "transaction_count_1h"
+      - "transaction_count_24h"
+      - "total_amount_1h"
+      - "total_amount_24h"
+      - "avg_amount_7d"
+      - "unique_merchants_24h"
+    
+    merchant:
+      - "merchant_avg_amount"
+      - "merchant_transaction_count"
+      - "merchant_fraud_rate"
+    
+    transaction:
+      - "hour_of_day"
+      - "day_of_week"
+      - "is_weekend"
+      - "is_night_time"
+    
+    geo:
+      - "distance_from_last_transaction"
+      - "country_mismatch"
+
+# ML Configuration
+ml:
+  model_type: "xgboost"  # Options: logistic, xgboost, lightgbm
+  
+  # Train/Test Split
+  test_size: 0.2
+  validation_size: 0.1
+  random_state: 42
+  
+  # Class Imbalance Handling
+  sampling_strategy: "smote"  # Options: none, undersample, oversample, smote
+  
+  # XGBoost Parameters
+  xgboost:
+    max_depth: 6
+    learning_rate: 0.1
+    n_estimators: 100
+    scale_pos_weight: 10  # Adjust based on class imbalance
+    subsample: 0.8
+    colsample_bytree: 0.8
+    objective: "binary:logistic"
+    eval_metric: "auc"
+  
+  # LightGBM Parameters
+  lightgbm:
+    max_depth: 6
+    learning_rate: 0.1
+    n_estimators: 100
+    num_leaves: 31
+    scale_pos_weight: 10
+  
+  # Feature Selection
+  feature_selection:
+    method: "importance"  # Options: importance, correlation, recursive
+    top_k: 50
+  
+  # Model Evaluation Thresholds
+  evaluation:
+    min_auc: 0.85
+    min_precision: 0.75
+    min_recall: 0.80
+    optimal_threshold: 0.5  # Adjust based on business requirements
+
+# MLflow Configuration
+mlflow:
+  tracking_uri: "file:./mlruns"
+  experiment_name: "fraud-detection"
+  artifact_location: "./mlruns/artifacts"
+  log_models: true
+
+# Inference API Configuration
+api:
+  host: "0.0.0.0"
+  port: 8000
+  workers: 4
+  model_path: "ml/models/fraud_model.pkl"
+  feature_store_path: "data/gold/feature_store.parquet"
+  
+  # Performance
+  max_batch_size: 100
+  prediction_timeout: 1.0  # seconds
+  
+  # Feature Cache
+  cache_enabled: true
+  cache_ttl: 300  # seconds
+
+# Kafka Configuration
+kafka:
+  bootstrap_servers: "localhost:9092"
+  
+  # Topics
+  topics:
+    raw_transactions: "transactions-raw"
+    scored_transactions: "transactions-scored"
+    fraud_alerts: "fraud-alerts"
+  
+  # Consumer
+  consumer:
+    group_id: "fraud-detection-consumer"
+    auto_offset_reset: "earliest"
+    enable_auto_commit: true
+  
+  # Producer
+  producer:
+    compression_type: "gzip"
+    max_in_flight_requests_per_connection: 5
+
+# Monitoring & Drift Detection
+monitoring:
+  # Population Stability Index (PSI) Thresholds
+  psi:
+    low_drift: 0.1
+    medium_drift: 0.25
+    high_drift: 0.5
+  
+  # Monitoring Intervals
+  check_interval_hours: 24
+  
+  # Alert Configuration
+  alerts:
+    fraud_probability_threshold: 0.8
+    high_amount_threshold: 10000
+    velocity_threshold: 10  # transactions per hour
+  
+  # Metrics to Track
+  track_features:
+    - "amount"
+    - "transaction_count_1h"
+    - "merchant_fraud_rate"
+    - "hour_of_day"
+
+# Database Configuration (Optional)
+database:
+  # PostgreSQL
+  postgres:
+    host: "localhost"
+    port: 5432
+    database: "fraud_detection"
+    user: "fraud_user"
+    password: "change_me"
+  
+  # Tables
+  tables:
+    transactions: "transactions"
+    predictions: "predictions"
+    features: "feature_store"
+
+# Logging
+logging:
+  level: "INFO"  # DEBUG, INFO, WARNING, ERROR
+  format: "{time:YYYY-MM-DD HH:mm:ss} | {level} | {message}"
+  log_to_file: true
+  log_file: "logs/fraud_detection.log"
+
+# Environment
+environment: "development"  # development, staging, production

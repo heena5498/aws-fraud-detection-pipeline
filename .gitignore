@@ -1,0 +1,99 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual Environment
+venv/
+env/
+ENV/
+.venv
+
+# Jupyter Notebook
+.ipynb_checkpoints
+*.ipynb_checkpoints/
+
+# Environment Variables
+.env
+.env.local
+
+# Data Files (large datasets)
+data/raw/*.csv
+data/raw/*.parquet
+data/bronze/*.parquet
+data/silver/*.parquet
+data/gold/*.parquet
+*.csv
+*.parquet
+
+# But keep the directory structure
+!data/.gitkeep
+!data/raw/.gitkeep
+!data/bronze/.gitkeep
+!data/silver/.gitkeep
+!data/gold/.gitkeep
+
+# Models
+ml/models/*.pkl
+ml/models/*.joblib
+ml/models/*.h5
+mlruns/
+mlartifacts/
+
+# Logs
+logs/
+*.log
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# macOS
+.DS_Store
+
+# Test Coverage
+htmlcov/
+.tox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+
+# Docker
+*.tar
+
+# React/Node (for dashboard)
+dashboard/react-app/node_modules/
+dashboard/react-app/build/
+dashboard/react-app/.env.local
+
+# Airflow
+airflow/logs/
+airflow.db
+
+# Temporary files
+*.tmp
+temp/
+tmp/

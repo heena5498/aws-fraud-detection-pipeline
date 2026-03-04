@@ -1,0 +1,6 @@
+created_at: '20260303_211424'
+fraud_rate_test: 0.01955
+fraud_rate_train: 0.0206625
+num_features: 41
+test_size: 20000
+train_size: 80000
