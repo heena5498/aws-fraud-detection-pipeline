@@ -25,11 +25,11 @@ Each service has a single, well-defined responsibility:
 | **Alert Service** | Fraud notifications | DynamoDB Streams |
 
 **Microservice Characteristics**:
-- ✅ Independent deployment (each Lambda/ECS service)
-- ✅ Decoupled via events (Kinesis, EventBridge)
-- ✅ Polyglot persistence (S3, DynamoDB, Kinesis)
-- ✅ Single responsibility per service
-- ✅ API-driven communication (FastAPI REST)
+-  Independent deployment (each Lambda/ECS service)
+-  Decoupled via events (Kinesis, EventBridge)
+-  Polyglot persistence (S3, DynamoDB, Kinesis)
+-  Single responsibility per service
+-  API-driven communication (FastAPI REST)
 
 ### Tertiary: **Lambda Architecture**
 Combines batch and stream processing:
@@ -63,7 +63,7 @@ Multi-hop architecture for data quality:
 
 ---
 
-## 🎨 Design Patterns Implemented
+##  Design Patterns Implemented
 
 ### 1. **Producer-Consumer Pattern**
 **Location**: `src/data_producer/producer.py` → Kinesis → `src/bronze_layer/handler.py`
@@ -389,9 +389,9 @@ def normalize_kaggle_cc(df: pd.DataFrame) -> pd.DataFrame:
 
 ---
 
-## 🔧 SOLID Principles
+##  SOLID Principles
 
-### ✅ **S - Single Responsibility Principle**
+###  **S - Single Responsibility Principle**
 
 Each component has ONE reason to change:
 
@@ -432,7 +432,7 @@ class BronzeLayerHandler:
 
 ---
 
-### ✅ **O - Open/Closed Principle**
+###  **O - Open/Closed Principle**
 
 Open for extension, closed for modification:
 
@@ -474,7 +474,7 @@ class Config:
 
 ---
 
-### ✅ **L - Liskov Substitution Principle**
+###  **L - Liskov Substitution Principle**
 
 Subtypes must be substitutable for their base types:
 
@@ -517,7 +517,7 @@ with moto.mock_s3():
 
 ---
 
-### ✅ **I - Interface Segregation Principle**
+###  **I - Interface Segregation Principle**
 
 Clients shouldn't depend on interfaces they don't use:
 
@@ -563,7 +563,7 @@ emit_gauge('queue_size', 42)
 
 ---
 
-### ✅ **D - Dependency Inversion Principle**
+###  **D - Dependency Inversion Principle**
 
 Depend on abstractions, not concretions:
 
@@ -620,22 +620,22 @@ def process_data():
 
 ---
 
-## 🏗️ Architecture Summary
+##  Architecture Summary
 
-### **NOT Monolithic** ❌
+### **NOT Monolithic** 
 This is NOT a monolithic architecture because:
 - Multiple independently deployable services (Lambda, ECS, Glue)
 - Decoupled via events (Kinesis, EventBridge)
 - Polyglot data stores (S3, DynamoDB, Kinesis)
 - Scalable components (each scales independently)
 
-### **NOT Traditional Client-Server** ❌
+### **NOT Traditional Client-Server** 
 While FastAPI is client-server, the overall system is:
 - Event-driven (Kinesis as message bus)
 - Asynchronous processing (Lambda, Glue)
 - Distributed state (S3, DynamoDB)
 
-### **YES: Event-Driven Microservices** ✅
+### **YES: Event-Driven Microservices** 
 Primary characteristics:
 - **Event-Driven**: Events trigger processing (Kinesis, EventBridge)
 - **Microservices**: Independent, single-purpose services
@@ -645,7 +645,7 @@ Primary characteristics:
 
 ---
 
-## 📊 Architecture Decision Comparison
+##  Architecture Decision Comparison
 
 | Characteristic | This System | Monolithic | Traditional Microservices |
 |----------------|-------------|------------|---------------------------|
@@ -660,7 +660,7 @@ Primary characteristics:
 
 ---
 
-## 🎯 Key Takeaways
+##  Key Takeaways
 
 This fraud detection system is a **modern, cloud-native architecture** that:
 
@@ -675,7 +675,7 @@ This fraud detection system is a **modern, cloud-native architecture** that:
 
 ---
 
-## 📚 References
+##  References
 
 - **Design Patterns**: Gang of Four (GoF) patterns adapted for cloud
 - **SOLID Principles**: Robert C. Martin (Uncle Bob)

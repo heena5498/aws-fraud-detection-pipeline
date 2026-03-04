@@ -163,21 +163,21 @@ cdk deploy --all --require-approval never
 
 **Expected Output:**
 ```
-✅  FraudKinesisStack-dev
+  FraudKinesisStack-dev
 Outputs:
 FraudKinesisStack-dev.StreamName = fraud-transactions-dev
 FraudKinesisStack-dev.BronzeBucketName = fraud-bronze-dev
 
-✅  FraudDatabaseStack-dev
+  FraudDatabaseStack-dev
 Outputs:
 FraudDatabaseStack-dev.DedupeTableName = fraud-dedupe-dev
 FraudDatabaseStack-dev.AlertsTableName = fraud-alerts-dev
 
-✅  FraudApiStack-dev
+  FraudApiStack-dev
 Outputs:
 FraudApiStack-dev.ApiUrl = http://fraud-api-XXXXX.us-east-1.elb.amazonaws.com/api/v1
 
-✅  FraudMonitoringStack-dev
+  FraudMonitoringStack-dev
 ```
 
 Copy the `ApiUrl` from output!
@@ -370,7 +370,7 @@ lightgbm:
   Precision: 0.7645
   Recall: 0.8423
 
-✅ Best model: xgboost
+ Best model: xgboost
 ```
 
 ### Deploy Model to S3
@@ -594,4 +594,4 @@ aws glue delete-database --name fraud_detection_dev
 
 ---
 
-**You're all set!** 🚀 Your AWS-native fraud detection pipeline is now running.
+**You're all set!**  Your AWS-native fraud detection pipeline is now running.

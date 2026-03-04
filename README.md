@@ -45,7 +45,7 @@ Build a **production-ready fraud detection system** that:
 
 This system is a **hybrid architecture** combining:
 
-### 1️⃣ **Event-Driven Architecture (Primary)**
+###  **Event-Driven Architecture (Primary)**
 
 **Core Pattern**: Events flow through the system, triggering asynchronous processing.
 
@@ -68,7 +68,7 @@ Transaction Event → Kinesis → Lambda → S3 → EventBridge → Glue → MLf
 
 ---
 
-### 2️⃣ **Microservices Architecture**
+###  **Microservices Architecture**
 
 Each service has a **single, well-defined responsibility**:
 
@@ -91,7 +91,7 @@ Each service has a **single, well-defined responsibility**:
 
 ---
 
-### 3️⃣ **Lambda Architecture**
+###  **Lambda Architecture**
 
 Combines **batch** and **stream** processing:
 
@@ -122,7 +122,7 @@ Combines **batch** and **stream** processing:
 
 ---
 
-### 4️⃣ **Medallion Architecture (Data Engineering)**
+###  **Medallion Architecture (Data Engineering)**
 
 Multi-hop architecture for **progressive data quality**:
 
@@ -384,7 +384,7 @@ def normalize_kaggle_cc(df: pd.DataFrame) -> pd.DataFrame:
 
 ---
 
-## 🔧 SOLID Principles
+##  SOLID Principles
 
 ###  **S - Single Responsibility Principle**
 
@@ -508,7 +508,7 @@ def save_events(events):
 
 ---
 
-## ⚖️ Architecture Trade-offs
+##  Architecture Trade-offs
 
 Key architectural decisions with **explicit trade-offs**:
 
@@ -610,7 +610,7 @@ def hash_pii(value: str, salt: str) -> str:
 
 ---
 
-## 📦 AWS Services
+##  AWS Services
 
 | Service | Purpose | Configuration |
 |---------|---------|---------------|
@@ -629,7 +629,7 @@ def hash_pii(value: str, salt: str) -> str:
 
 ---
 
-## 📁 Project Structure
+##  Project Structure
 
 ```
 fraud-detection-aws/
@@ -698,7 +698,7 @@ fraud-detection-aws/
 
 ---
 
-## 🔄 Data Flow
+##  Data Flow
 
 ```
 1. DATA INGESTION
@@ -827,7 +827,7 @@ npm start
 
 ---
 
-## 💰 Cost Analysis
+##  Cost Analysis
 
 ### Development Environment (~$90/month)
 
@@ -987,7 +987,7 @@ MIT License - see [LICENSE](LICENSE) file
 
 ---
 
-## 📧 Contact
+##  Contact
 
 **Heena Khan** - hkhan520@umd.edu
 

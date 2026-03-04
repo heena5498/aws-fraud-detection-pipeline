@@ -1,16 +1,16 @@
-# 🎉 Fraud Detection Pipeline - Local Run Summary
+#  Fraud Detection Pipeline - Local Run Summary
 
 **Date**: March 3, 2026  
-**Status**: ✅ Successfully Running Locally
+**Status**:  Successfully Running Locally
 
 ---
 
-## ✅ Completed Setup
+##  Completed Setup
 
 ### 1. Environment Setup
-- ✅ Virtual environment created (`.venv/`)
-- ✅ Python 3.14 configured
-- ✅ Environment variables configured (`.env`)
+-  Virtual environment created (`.venv/`)
+-  Python 3.14 configured
+-  Environment variables configured (`.env`)
 
 ### 2. Dependencies Installed
 All Python packages installed successfully (without pinned versions for compatibility):
@@ -28,18 +28,18 @@ All Docker services started successfully:
 
 | Service | Port | Status | URL |
 |---------|------|--------|-----|
-| **Kafka** | 9092 | ✅ Running | localhost:9092 |
-| **Kafka UI** | 8081 | ✅ Running | http://localhost:8081 |
-| **Zookeeper** | 2181 | ✅ Running | localhost:2181 |
-| **PostgreSQL** | 5432 | ✅ Running | localhost:5432 |
-| **MLflow** | 5001 | ✅ Running | http://localhost:5001 |
+| **Kafka** | 9092 |  Running | localhost:9092 |
+| **Kafka UI** | 8081 |  Running | http://localhost:8081 |
+| **Zookeeper** | 2181 |  Running | localhost:2181 |
+| **PostgreSQL** | 5432 |  Running | localhost:5432 |
+| **MLflow** | 5001 |  Running | http://localhost:5001 |
 
 **Port Changes Made**:
 - MLflow: 5000 → 5001 (macOS AirPlay conflict)
 - Kafka UI: 8080 → 8081 (port conflict)
 
 ### 4. Data Generation
-✅ **Synthetic Dataset Created**
+ **Synthetic Dataset Created**
 - **100,000 transactions** generated
 - **Fraud rate**: 2.04%
 - **Unique users**: 10,000
@@ -50,21 +50,21 @@ All Docker services started successfully:
 
 ### 5. ETL Pipeline Executed
 
-#### Bronze Layer ✅
+#### Bronze Layer 
 - **Input**: 100K raw transactions (CSV)
 - **Output**: 100K validated records (Parquet)
 - **File size**: 2.63 MB
 - **Features**: Schema validation, deduplication
 - **Location**: `data/bronze/transactions_20260303_211215.parquet`
 
-#### Silver Layer ✅
+#### Silver Layer 
 - **Input**: 100K Bronze records
 - **Output**: 100K records with **49 features** (Parquet)
 - **File size**: 17.64 MB
 - **Features**: Temporal, amount, velocity (1h/6h/24h/7d), merchant, user, geo, interaction
 - **Location**: `data/silver/transactions_features_20260303_211359.parquet`
 
-#### Gold Layer ✅
+#### Gold Layer 
 - **Input**: 100K Silver records (49 features)
 - **Output**: Training-ready dataset with **41 features**
 - **Train samples**: 80,000 (2.07% fraud)
@@ -74,7 +74,7 @@ All Docker services started successfully:
   - `data/gold/train_20260303_211424.parquet`
   - `data/gold/test_20260303_211424.parquet`
 
-### 6. Model Training ✅
+### 6. Model Training 
 
 **Model Type**: XGBoost Classifier
 
@@ -84,12 +84,12 @@ All Docker services started successfully:
 - After SMOTE: 156,694 samples (50% fraud)
 
 **Performance Metrics** (on test set):
-- ✅ **Accuracy**: 98.28%
-- ✅ **Precision**: 53.50%
-- ✅ **Recall**: 90.03% (catching 90% of frauds!)
-- ✅ **F1-Score**: 67.11%
-- ✅ **AUC-ROC**: 99.31%
-- ✅ **False Positive Rate**: 1.56%
+-  **Accuracy**: 98.28%
+-  **Precision**: 53.50%
+-  **Recall**: 90.03% (catching 90% of frauds!)
+-  **F1-Score**: 67.11%
+-  **AUC-ROC**: 99.31%
+-  **False Positive Rate**: 1.56%
 
 **Confusion Matrix**:
 ```
@@ -120,7 +120,7 @@ Fraud            39     352    (90% recall)
 - Experiment logged to `mlruns/`
 - View at: http://localhost:5001
 
-### 7. FastAPI Service ✅
+### 7. FastAPI Service 
 
 **Status**: Running on http://localhost:8000
 
@@ -148,7 +148,7 @@ Fraud            39     352    (90% recall)
 
 ---
 
-## 📊 System Architecture
+##  System Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -188,7 +188,7 @@ Fraud            39     352    (90% recall)
 
 ---
 
-## ⚠️ Known Issues
+##  Known Issues
 
 ### API Prediction Endpoint
 **Issue**: `/predict` endpoint returns feature mismatch error.
@@ -205,7 +205,7 @@ Fraud            39     352    (90% recall)
 
 ---
 
-## 🚀 How to Run
+##  How to Run
 
 ### Start All Services
 ```bash
@@ -246,7 +246,7 @@ open http://localhost:8000/docs
 
 ---
 
-## 📁 Generated Files
+##  Generated Files
 
 ### Data
 - `data/raw/transactions.csv` - 100K synthetic transactions (9.13 MB)
@@ -268,13 +268,13 @@ open http://localhost:8000/docs
 
 ---
 
-## 💡 Next Steps
+##  Next Steps
 
 ### Immediate (Fix API)
-1. ✅ Add feature engineering to `/predict` endpoint
-2. ✅ Create feature transformer class matching training pipeline
-3. ✅ Handle missing user/merchant history for new entities
-4. ✅ Add input validation for required fields
+1.  Add feature engineering to `/predict` endpoint
+2.  Create feature transformer class matching training pipeline
+3.  Handle missing user/merchant history for new entities
+4.  Add input validation for required fields
 
 ### Future Enhancements
 1. **Real-time Streaming**: Producer → Kafka → Consumer → API
@@ -287,7 +287,7 @@ open http://localhost:8000/docs
 
 ---
 
-## 📝 Dependencies Installed
+##  Dependencies Installed
 
 **Core Libraries** (latest versions):
 - pandas==2.3.3, numpy==2.4.2, pyarrow==22.0.0
@@ -304,15 +304,15 @@ open http://localhost:8000/docs
 
 ---
 
-## 🎯 Success Metrics Achieved
+##  Success Metrics Achieved
 
-✅ **Data Pipeline**: Bronze → Silver → Gold (100K transactions processed)  
-✅ **Model Performance**: 99.31% AUC-ROC, 90% recall  
-✅ **API Availability**: Health endpoint responding (200 OK)  
-✅ **Infrastructure**: All Docker services running  
-✅ **Documentation**: Swagger UI auto-generated  
+ **Data Pipeline**: Bronze → Silver → Gold (100K transactions processed)  
+ **Model Performance**: 99.31% AUC-ROC, 90% recall  
+ **API Availability**: Health endpoint responding (200 OK)  
+ **Infrastructure**: All Docker services running  
+ **Documentation**: Swagger UI auto-generated  
 
-**Overall Status**: 🟢 **PRODUCTION-READY** (pending API feature engineering fix)
+**Overall Status**:  **PRODUCTION-READY** (pending API feature engineering fix)
 
 ---
 

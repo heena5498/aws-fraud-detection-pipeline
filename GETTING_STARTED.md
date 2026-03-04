@@ -38,7 +38,7 @@ Visit http://localhost:8000/docs for interactive API documentation.
 
 ---
 
-## 📋 Using Make Commands (Recommended)
+##  Using Make Commands (Recommended)
 
 ```bash
 # Run complete pipeline
@@ -56,7 +56,7 @@ make drift
 
 ---
 
-## 🔄 Real-Time Streaming Demo
+##  Real-Time Streaming Demo
 
 ### 1. Start Kafka (in separate terminal)
 ```bash
@@ -89,11 +89,11 @@ python streaming/producer.py --rate 10 --duration 0
 python streaming/consumer.py
 ```
 
-You should see real-time fraud detection in action! 🎉
+You should see real-time fraud detection in action! 
 
 ---
 
-## 🧪 Testing the API
+##  Testing the API
 
 ### Using curl:
 ```bash
@@ -171,7 +171,7 @@ This calculates PSI (Population Stability Index) for all features and alerts if 
 
 ---
 
-## 📦 Directory Structure After Setup
+##  Directory Structure After Setup
 
 ```
 FraudDetection/
@@ -197,7 +197,7 @@ FraudDetection/
 
 ---
 
-## 🎓 How to Think About This Project
+##  How to Think About This Project
 
 ### 1. **Data Flow Understanding**
 ```
@@ -297,7 +297,7 @@ pip install -r requirements.txt
 
 ---
 
-## 📚 Learning Resources
+##  Learning Resources
 
 1. **Feature Engineering for Fraud Detection:**
    - velocity features (transaction frequency)
@@ -349,7 +349,7 @@ pip install -r requirements.txt
 
 ---
 
-## 🔄 Next Steps / Enhancements
+##  Next Steps / Enhancements
 
 1. **Week 1-2:** Core Pipeline (you are here!)
 2. **Week 3:** Add graph features (user-merchant networks)

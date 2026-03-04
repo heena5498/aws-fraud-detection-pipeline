@@ -1,67 +1,67 @@
 # AWS-Native Fraud Detection Pipeline - Project Summary
 
-## 📦 Complete Implementation Overview
+##  Complete Implementation Overview
 
 This document summarizes the **AWS-Native Real-Time Fraud Detection Pipeline** project that has been generated. The system demonstrates production-grade ML engineering with streaming data, serverless architecture, and automated retraining.
 
 ---
 
-## 🎯 Key Capabilities
+##  Key Capabilities
 
-✅ **Real-time streaming** with Kinesis (1000+ events/sec)  
-✅ **Exactly-once processing** using DynamoDB idempotency  
-✅ **Medallion architecture** (Bronze → Silver → Gold) for data quality  
-✅ **PII protection** with SHA256 tokenization  
-✅ **Feature engineering** at scale with PySpark (Glue)  
-✅ **ML experiment tracking** with MLflow  
-✅ **Low-latency API** (<200ms p95) on ECS Fargate  
-✅ **Drift monitoring** with PSI-based automated retraining triggers  
-✅ **Infrastructure as Code** with AWS CDK (TypeScript)  
-✅ **React TypeScript** analyst console  
-✅ **Comprehensive monitoring** with CloudWatch dashboards  
+ **Real-time streaming** with Kinesis (1000+ events/sec)  
+ **Exactly-once processing** using DynamoDB idempotency  
+ **Medallion architecture** (Bronze → Silver → Gold) for data quality  
+ **PII protection** with SHA256 tokenization  
+ **Feature engineering** at scale with PySpark (Glue)  
+ **ML experiment tracking** with MLflow  
+ **Low-latency API** (<200ms p95) on ECS Fargate  
+ **Drift monitoring** with PSI-based automated retraining triggers  
+ **Infrastructure as Code** with AWS CDK (TypeScript)  
+ **React TypeScript** analyst console  
+ **Comprehensive monitoring** with CloudWatch dashboards  
 
 ---
 
-## 📁 Project Structure
+##  Project Structure
 
 ```
 fraud-detection-aws/
 │
 ├── src/                                    # Python source code
-│   ├── data_producer/                      # ✅ CREATED
+│   ├── data_producer/                      #  CREATED
 │   │   ├── schemas.py                      # Pydantic event schema v1.0
 │   │   ├── producer.py                     # Kinesis batch producer (500 max)
 │   │   └── dataset_loader.py               # PaySim/Kaggle normalizer
 │   │
-│   ├── bronze_layer/                       # ✅ CREATED
+│   ├── bronze_layer/                       #  CREATED
 │   │   ├── handler.py                      # Lambda: Kinesis → DynamoDB → S3
 │   │   ├── validator.py                    # Pydantic validation
 │   │   ├── deduplicator.py                 # DynamoDB conditional writes
 │   │   └── s3_writer.py                    # Parquet writer with partitioning
 │   │
-│   ├── silver_layer/                       # ✅ CREATED
+│   ├── silver_layer/                       #  CREATED
 │   │   └── job.py                          # Glue PySpark: velocity + aggregates
 │   │
-│   ├── gold_layer/                         # ✅ CREATED
+│   ├── gold_layer/                         #  CREATED
 │   │   └── job.py                          # Glue PySpark: point-in-time features
 │   │
-│   ├── ml_training/                        # ✅ CREATED
+│   ├── ml_training/                        #  CREATED
 │   │   └── train.py                        # LR + XGBoost + LightGBM with MLflow
 │   │
-│   ├── api/                                # ✅ CREATED
+│   ├── api/                                #  CREATED
 │   │   └── main.py                         # FastAPI scoring service
 │   │
-│   ├── drift_monitor/                      # ✅ CREATED
+│   ├── drift_monitor/                      #  CREATED
 │   │   └── handler.py                      # Lambda: daily PSI calculation
 │   │
-│   └── common/                             # ✅ CREATED
+│   └── common/                             #  CREATED
 │       ├── __init__.py                     # Package exports
 │       ├── config.py                       # Environment configuration
 │       ├── logger.py                       # Structured JSON logging
 │       ├── metrics.py                      # CloudWatch metrics client
 │       └── aws_clients.py                  # Boto3 client factory
 │
-├── infrastructure/                         # ✅ CREATED (AWS CDK)
+├── infrastructure/                         #  CREATED (AWS CDK)
 │   ├── bin/
 │   │   └── app.ts                          # CDK app entry point
 │   ├── lib/
@@ -71,24 +71,24 @@ fraud-detection-aws/
 │   │   └── monitoring-stack.ts             # CloudWatch dashboards
 │   └── package.json                        # Node.js dependencies
 │
-├── frontend/                               # ✅ CREATED (React TypeScript)
+├── frontend/                               #  CREATED (React TypeScript)
 │   ├── src/
 │   │   └── pages/
 │   │       └── AlertsList.tsx              # Fraud alerts dashboard
 │   └── package.json                        # React dependencies
 │
-├── docs/                                   # ✅ CREATED
+├── docs/                                   #  CREATED
 │   ├── ADR.md                              # 7 Architecture Decision Records
 │   └── GETTING_STARTED.md                  # Step-by-step setup guide
 │
-├── requirements.txt                        # ✅ UPDATED (AWS-native dependencies)
-├── Dockerfile                              # ✅ CREATED (Multi-stage FastAPI)
-└── README.md                               # ⚠️ EXISTS (needs update)
+├── requirements.txt                        #  UPDATED (AWS-native dependencies)
+├── Dockerfile                              #  CREATED (Multi-stage FastAPI)
+└── README.md                               #  EXISTS (needs update)
 ```
 
 ---
 
-## 🏗️ Architecture Components
+##  Architecture Components
 
 ### Data Ingestion Layer
 | Component | Technology | Purpose |
@@ -281,7 +281,7 @@ fraud-detection-aws/
 
 ---
 
-## 🧪 Testing Strategy
+##  Testing Strategy
 
 ### Unit Tests (To Be Created)
 ```
@@ -308,7 +308,7 @@ tests/load/
 
 ---
 
-## 📊 Expected Performance
+##  Expected Performance
 
 ### Throughput
 - **Kinesis**: 1 shard = 1000 events/sec (1 MB/sec)
@@ -329,7 +329,7 @@ tests/load/
 
 ---
 
-## 💰 Cost Breakdown (Dev Environment)
+##  Cost Breakdown (Dev Environment)
 
 | Service | Specification | Monthly Cost |
 |---------|--------------|--------------|
@@ -371,7 +371,7 @@ tests/load/
 
 ---
 
-## 🚀 Deployment Steps
+##  Deployment Steps
 
 ```bash
 # 1. Deploy infrastructure
@@ -406,7 +406,7 @@ See **[GETTING_STARTED.md](docs/GETTING_STARTED.md)** for detailed instructions.
 
 ---
 
-## 📈 Monitoring & Alerts
+##  Monitoring & Alerts
 
 ### CloudWatch Dashboards
 - Pipeline health (Kinesis, Lambda, ECS)
@@ -421,7 +421,7 @@ See **[GETTING_STARTED.md](docs/GETTING_STARTED.md)** for detailed instructions.
 
 ---
 
-## 🔄 Automated Retraining
+##  Automated Retraining
 
 **Trigger**: PSI > 0.25 detected by drift monitor
 
@@ -434,7 +434,7 @@ See **[GETTING_STARTED.md](docs/GETTING_STARTED.md)** for detailed instructions.
 
 ---
 
-## 📚 Documentation Files
+##  Documentation Files
 
 1. **README.md** - Project overview, architecture diagram
 2. **docs/ADR.md** - 7 architectural decisions
@@ -443,18 +443,18 @@ See **[GETTING_STARTED.md](docs/GETTING_STARTED.md)** for detailed instructions.
 
 ---
 
-## 🎓 Learning Outcomes
+##  Learning Outcomes
 
 This project demonstrates:
 
-✅ **AWS Serverless**: Kinesis, Lambda, Glue, ECS Fargate, DynamoDB  
-✅ **Data Engineering**: Medallion architecture, PySpark, Parquet  
-✅ **ML Engineering**: Feature engineering, MLflow, model deployment  
-✅ **Backend Development**: FastAPI, async endpoints, Pydantic  
-✅ **Frontend Development**: React + TypeScript + Material-UI  
-✅ **DevOps**: AWS CDK (IaC), Docker, CI/CD-ready  
-✅ **Observability**: Structured logging, CloudWatch, alarms  
-✅ **Security**: IAM, encryption, PII tokenization  
+ **AWS Serverless**: Kinesis, Lambda, Glue, ECS Fargate, DynamoDB  
+ **Data Engineering**: Medallion architecture, PySpark, Parquet  
+ **ML Engineering**: Feature engineering, MLflow, model deployment  
+ **Backend Development**: FastAPI, async endpoints, Pydantic  
+ **Frontend Development**: React + TypeScript + Material-UI  
+ **DevOps**: AWS CDK (IaC), Docker, CI/CD-ready  
+ **Observability**: Structured logging, CloudWatch, alarms  
+ **Security**: IAM, encryption, PII tokenization  
 
 ---
 
@@ -469,7 +469,7 @@ This project demonstrates:
 
 ---
 
-## ✅ Checklist Before Production
+##  Checklist Before Production
 
 - [ ] Load test API (verify p95 < 200ms at 1000 RPS)
 - [ ] Set up alerts for all critical metrics
@@ -492,4 +492,4 @@ This project demonstrates:
 
 ---
 
-**Generated with ❤️ for demonstrating production ML engineering skills**
+**Generated with  for demonstrating production ML engineering skills**
