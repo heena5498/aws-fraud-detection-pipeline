@@ -22,6 +22,7 @@ fastapi==0.108.0
 uvicorn[standard]==0.25.0
 pydantic==2.5.3
 python-multipart==0.0.6
+PyJWT[crypto]==2.9.0  # OIDC token verification
 
 # Data Validation
 pandera==0.17.2  # DataFrame validation

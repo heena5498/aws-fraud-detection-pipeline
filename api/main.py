@@ -4,7 +4,7 @@ FastAPI Inference Service
 Real-time fraud detection API
 """
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field, validator
 from typing import List, Optional, Dict
@@ -12,10 +12,16 @@ import joblib
 import pandas as pd
 import numpy as np
 from pathlib import Path
+import os
 import yaml
 from loguru import logger
 from datetime import datetime
 import uvicorn
+
+try:
+    from api.auth import OIDCVerifier
+except ImportError:  # running as `python api/main.py`
+    from auth import OIDCVerifier
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -36,6 +42,15 @@ app.add_middleware(
 # Load configuration
 with open("config.yaml", 'r') as f:
     config = yaml.safe_load(f)
+
+# OIDC authentication for human-facing endpoints (env vars override config.yaml)
+oidc_verifier = OIDCVerifier(
+    issuer=os.getenv("OIDC_ISSUER", config['auth']['issuer']),
+    audience=os.getenv("OIDC_AUDIENCE", config['auth']['audience']),
+)
+
+# Categorical inputs that training one-hot encodes
+CATEGORICAL_FEATURES = ['merchant_category', 'country']
 
 # Global variables for model and feature columns
 model = None
@@ -109,15 +124,10 @@ async def load_model():
     model = joblib.load(model_path)
     logger.info(f"✓ Model loaded from {model_path}")
     
-    # Load feature columns
-    feature_cols_path = Path(config['data']['gold_path']) / "feature_columns.txt"
-    if feature_cols_path.exists():
-        with open(feature_cols_path, 'r') as f:
-            feature_columns = [line.strip() for line in f.readlines()]
-        logger.info(f"✓ Loaded {len(feature_columns)} feature columns")
-    else:
-        logger.warning("Feature columns file not found. Using model's expected features.")
-        feature_columns = None
+    # Feature columns come from the model itself, so they always match training
+    # (including the one-hot encoded columns created in ml/train.py)
+    feature_columns = list(model.feature_names_in_)
+    logger.info(f"✓ Model expects {len(feature_columns)} feature columns")
     
     logger.info("✓ API ready for predictions")
 
@@ -172,15 +182,20 @@ def engineer_features(transaction: Transaction) -> pd.DataFrame:
         'amount_x_hour': transaction.amount * ts.hour,
         'amount_x_weekend': transaction.amount * int(ts.dayofweek >= 5),
         'velocity_amount_ratio': 1 / (transaction.amount + 1),
+
+        # Categorical features (one-hot encoded below)
+        'merchant_category': transaction.merchant_category,
+        'country': transaction.country,
     }
-    
-    # Add missing features from feature_columns
+
+    # One-hot encode categoricals to match training (ml/train.py uses pd.get_dummies).
+    # Reindexing to the model's columns adds missing features as 0 and drops
+    # categories unseen in training, so the column order always matches the model.
+    df = pd.get_dummies(pd.DataFrame([features]), columns=CATEGORICAL_FEATURES)
     if feature_columns:
-        for col in feature_columns:
-            if col not in features:
-                features[col] = 0  # Default value for missing features
-    
-    return pd.DataFrame([features])
+        df = df.reindex(columns=feature_columns, fill_value=0)
+
+    return df
 
 
 def get_risk_level(probability: float) -> str:
@@ -239,11 +254,7 @@ async def predict_fraud(transaction: Transaction):
     try:
         # Engineer features
         features = engineer_features(transaction)
-        
-        # Ensure feature order matches training
-        if feature_columns:
-            features = features[feature_columns]
-        
+
         # Make prediction
         fraud_probability = float(model.predict_proba(features)[0, 1])
         is_fraud = fraud_probability >= config['ml']['evaluation']['optimal_threshold']
@@ -295,8 +306,8 @@ async def batch_predict_fraud(request: BatchTransactionRequest):
 
 
 @app.get("/model/info")
-async def model_info():
-    """Get model information."""
+async def model_info(user: Dict = Depends(oidc_verifier.authenticate)):
+    """Get model information. Requires an OIDC bearer token."""
     if model is None:
         raise HTTPException(status_code=503, detail="Model not loaded")
     

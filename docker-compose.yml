@@ -94,6 +94,22 @@ services:
     networks:
       - fraud-network
 
+  # Keycloak - OIDC identity provider for API authentication
+  # Realm, client and test user are imported from keycloak/fraud-detection-realm.json
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.0
+    container_name: fraud-keycloak
+    command: start-dev --import-realm
+    ports:
+      - "8180:8080"
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: admin
+    volumes:
+      - ./keycloak:/opt/keycloak/data/import:ro
+    networks:
+      - fraud-network
+
 networks:
   fraud-network:
     driver: bridge

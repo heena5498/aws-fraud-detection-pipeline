@@ -1,1006 +1,288 @@
-# AWS-Native Real-Time Fraud Detection Pipeline
+# Real-Time Fraud Detection Pipeline
 
-> **Production-Grade ML System**: Event-driven microservices architecture demonstrating modern software engineering, ML engineering, and AWS best practices.
+An end-to-end machine learning system that learns what fraudulent card transactions look like and scores new transactions as they stream in.
 
-[![Architecture](https://img.shields.io/badge/Architecture-Event--Driven%20Microservices-blue)](#architecture-type)
-[![AWS](https://img.shields.io/badge/AWS-Serverless%20Native-orange)](#aws-services)
-[![SOLID](https://img.shields.io/badge/Principles-SOLID-green)](#solid-principles)
-[![Patterns](https://img.shields.io/badge/Design%20Patterns-12+-yellow)](#design-patterns)
-[![Python](https://img.shields.io/badge/Python-3.11-blue)](#tech-stack)
-[![TypeScript](https://img.shields.io/badge/TypeScript-5.2-blue)](#tech-stack)
+It covers the full lifecycle: data generation, a Bronze/Silver/Gold ETL pipeline, model training with experiment tracking, a REST scoring API secured with OIDC, Kafka-based streaming, and drift monitoring. It also includes a cloud design for AWS written as infrastructure-as-code.
 
----
-
-## Table of Contents
-
-- [Project Goal](#-project-goal)
-- [Architecture Type](#-architecture-type)
-- [Design Patterns](#-design-patterns)
-- [SOLID Principles](#-solid-principles)
-- [Architecture Trade-offs](#-architecture-trade-offs)
-- [AWS Services](#-aws-services)
-- [Project Structure](#-project-structure)
-- [Data Flow](#-data-flow)
-- [Quick Start](#-quick-start)
-- [Cost Analysis](#-cost-analysis)
-- [Tech Stack](#-tech-stack)
-- [Key Features](#-key-features)
-
----
-
-## Project Goal
-
-Build a **production-ready fraud detection system** that:
-
--  Detects fraudulent transactions in **<200ms** (p95 latency)
--  Processes **1000+ events/second** with exactly-once semantics
--  Automatically retrains when **data drift detected** (PSI > 0.25)
--  Provides **explainable predictions** with feature importance
--  Scales independently per component (Kinesis, Lambda, ECS, Glue)
--  Demonstrates **modern architecture patterns** and **SOLID principles**
-
----
-
-## Architecture Type
-
-This system is a **hybrid architecture** combining:
-
-###  **Event-Driven Architecture (Primary)**
-
-**Core Pattern**: Events flow through the system, triggering asynchronous processing.
-
-```
-Transaction Event → Kinesis → Lambda → S3 → EventBridge → Glue → MLflow → ECS API
-```
-
-**Key Characteristics**:
-- **Event Producers**: Kinesis producer sends transaction events
-- **Event Stream**: Kinesis Data Streams (1000+ events/sec)
-- **Event Consumers**: Bronze Lambda, Glue jobs, Drift monitor
-- **Event Triggers**: EventBridge schedules (Glue jobs, drift checks)
-- **Event Sourcing**: All events stored immutably in Bronze layer
-
-**Benefits**:
-- Loose coupling between components
-- Asynchronous processing (non-blocking)
-- Scalability (each component scales independently)
-- Fault tolerance (retry logic, dead-letter queues)
-
----
-
-###  **Microservices Architecture**
-
-Each service has a **single, well-defined responsibility**:
-
-| Microservice | Responsibility | Technology | Scaling |
-|--------------|---------------|------------|---------|
-| **Data Producer** | Event generation | Python + Kinesis SDK | Manual |
-| **Bronze Service** | Ingestion + validation | AWS Lambda | Auto (Kinesis trigger) |
-| **Silver Service** | Feature engineering | AWS Glue (PySpark) | DPU-based |
-| **Gold Service** | Training data prep | AWS Glue (PySpark) | DPU-based |
-| **Scoring Service** | Real-time predictions | FastAPI on ECS Fargate | Auto (CPU/memory) |
-| **Drift Monitor** | Model monitoring | AWS Lambda | Scheduled |
-| **Alert Service** | Fraud notifications | DynamoDB + Lambda | Event-driven |
-
-**Microservice Characteristics**:
--  Independent deployment (each Lambda/ECS service)
--  Decoupled via events (Kinesis, EventBridge)
--  Polyglot persistence (S3, DynamoDB, Kinesis)
--  Single responsibility per service
--  API-driven communication (REST, async events)
-
----
-
-###  **Lambda Architecture**
-
-Combines **batch** and **stream** processing:
-
-```
-┌─────────────────────────────────────────┐
-│         Speed Layer (Real-time)         │
-│  Kinesis → Lambda → S3 Bronze           │
-│  Latency: <1 minute                     │
-└─────────────────────────────────────────┘
-                    ↓
-┌─────────────────────────────────────────┐
-│         Batch Layer (Historical)        │
-│  EventBridge → Glue (Silver/Gold)       │
-│  Frequency: Hourly/Daily                │
-└─────────────────────────────────────────┘
-                    ↓
-┌─────────────────────────────────────────┐
-│         Serving Layer (API)             │
-│  FastAPI (ECS) → Predictions            │
-│  Latency: <200ms                        │
-└─────────────────────────────────────────┘
-```
-
-**Why Lambda Architecture?**
-- **Speed Layer**: Real-time ingestion for immediate data availability
-- **Batch Layer**: Accurate, complete feature engineering (joins, aggregations)
-- **Serving Layer**: Optimized for low-latency reads
-
----
-
-###  **Medallion Architecture (Data Engineering)**
-
-Multi-hop architecture for **progressive data quality**:
-
-```
-Bronze (Raw) → Silver (Cleansed) → Gold (Curated)
-```
-
-| Layer | Quality | Features | Use Case |
-|-------|---------|----------|----------|
-| **Bronze** | Raw, validated | Schema validation, deduplication | Event log, audit trail |
-| **Silver** | Cleansed, enriched | PII tokenization, velocity features, aggregates | Feature engineering |
-| **Gold** | Curated, optimized | Point-in-time features, ML-ready | Model training, queries |
-
-**Benefits**:
-- Data quality improves at each layer
-- Bronze acts as source of truth (replayable)
-- Silver/Gold can be rebuilt from Bronze
-- Separation of concerns (ingestion vs. transformation)
-
----
-
-## Design Patterns
-
-The system implements **12 design patterns**:
-
-### 1. **Producer-Consumer Pattern**
-**Location**: `src/data_producer/producer.py` → Kinesis → `src/bronze_layer/handler.py`
-
-```python
-# Producer
-class KinesisProducer:
-    def send_batch(self, events):  # Produces events
-        self.kinesis.put_records(StreamName=stream, Records=events)
-
-# Consumer
-def lambda_handler(event, context):  # Consumes from Kinesis
-    for record in event['Records']:
-        process_event(record)
-```
-
-**Benefits**: Decouples data generation from processing, enables async workflows.
-
----
-
-### 2. **Repository Pattern**
-**Location**: `src/bronze_layer/s3_writer.py`, `src/bronze_layer/deduplicator.py`
-
-```python
-# Abstracts storage details
-class S3ParquetWriter:
-    def write_batch(self, events):
-        df = pd.DataFrame(events)
-        self.s3_client.put_object(Bucket=bucket, Key=key, Body=parquet_bytes)
-
-class Deduplicator:
-    def is_duplicate(self, transaction_id):
-        response = self.table.get_item(Key={'id': transaction_id})
-        return 'Item' in response
-```
-
-**Benefits**: Abstracts data access, enables testing with mocks (moto, LocalStack).
-
----
-
-### 3. **Factory Pattern**
-**Location**: `src/common/aws_clients.py`
-
-```python
-class AWSClients:
-    def get_client(self, service_name: str):
-        """Factory method for AWS clients"""
-        if service_name not in self._clients:
-            self._clients[service_name] = boto3.client(
-                service_name, config=self.boto_config
-            )
-        return self._clients[service_name]
-    
-    @property
-    def s3(self):
-        return self.get_client('s3')  # Lazy initialization
-```
-
-**Benefits**: Centralized client creation, connection pooling, retry configuration.
-
----
-
-### 4. **Singleton Pattern**
-**Location**: `src/common/config.py`, `src/common/metrics.py`
-
-```python
-_config: Optional[Config] = None
-
-def get_config() -> Config:
-    """Singleton instance"""
-    global _config
-    if _config is None:
-        _config = Config()
-    return _config
-```
-
-**Benefits**: Single configuration instance across the application, consistent state.
-
----
-
-### 5. **Strategy Pattern**
-**Location**: `src/ml_training/train.py`
-
-```python
-class FraudModelTrainer:
-    def train_logistic_regression(self, X, y):  # Strategy 1
-        return LogisticRegression().fit(X, y)
-    
-    def train_xgboost(self, X, y):  # Strategy 2
-        return xgb.XGBClassifier().fit(X, y)
-    
-    def train_lightgbm(self, X, y):  # Strategy 3
-        return lgb.LGBMClassifier().fit(X, y)
-```
-
-**Benefits**: Easily swap/compare ML algorithms without changing client code.
-
----
-
-### 6. **Decorator Pattern**
-**Location**: `src/data_producer/schemas.py`, `src/common/metrics.py`
-
-```python
-# Pydantic field validation decorator
-class TransactionEvent(BaseModel):
-    @validator('amount')
-    def validate_amount(cls, v):
-        if v < 0.01:
-            raise ValueError('Amount must be >= 0.01')
-        return v
-
-# Timing decorator
-with Timer('processing_time'):
-    process_data()
-```
-
-**Benefits**: Clean separation of concerns (validation, timing, logging).
-
----
-
-### 7. **Observer Pattern**
-**Location**: EventBridge → Lambda triggers, DynamoDB Streams
-
-```python
-# EventBridge rule observes schedule events
-DriftMonitorRule:
-  Schedule: cron(0 1 * * ? *)  # Daily at 1 AM
-  Target: DriftMonitorLambda
-
-# DynamoDB Streams observe table changes
-AlertsTable:
-  StreamViewType: NEW_AND_OLD_IMAGES
-  Consumers: [AlertNotificationLambda]
-```
-
-**Benefits**: Decoupled event handling, multiple observers can react to same event.
-
----
-
-### 8. **Circuit Breaker Pattern**
-**Location**: Lambda retry config, Boto3 retries
-
-```python
-# Boto3 adaptive retry (built-in circuit breaker)
-BotoConfig(
-    retries={
-        'max_attempts': 3,
-        'mode': 'adaptive'  # Backs off automatically on errors
-    }
-)
-```
-
-**Benefits**: Prevents cascading failures, fault tolerance.
-
----
-
-### 9. **Idempotency Pattern**
-**Location**: `src/bronze_layer/deduplicator.py`
-
-```python
-def mark_processed(self, transaction_id: str):
-    """Idempotent write using DynamoDB conditional expression"""
-    self.table.put_item(
-        Item={'id': transaction_id, 'processed_at': now()},
-        ConditionExpression='attribute_not_exists(id)'  #  Only if NOT exists
-    )
-```
-
-**Benefits**: Exactly-once processing, prevents duplicate records.
-
----
-
-### 10. **CQRS (Command Query Responsibility Segregation)**
-**Location**: API endpoints, DynamoDB tables
-
-```python
-# WRITE PATH (Commands)
-@app.post("/api/v1/score")
-async def score_transaction(txn):
-    score = model.predict(txn)
-    if score.is_fraud:
-        save_alert(txn, score)  # Write to alerts table
-    return score
-
-# READ PATH (Queries)
-@app.get("/api/v1/alerts")
-async def list_alerts(status: str = None):
-    return query_alerts_table(status)  # Optimized for reads
-```
-
-**Benefits**: Optimized read/write paths, independent scaling.
-
----
-
-### 11. **Saga Pattern (Distributed Transactions)**
-**Location**: Step Functions retraining workflow
-
-```json
-{
-  "Comment": "Automated retraining saga",
-  "States": {
-    "RunGoldLayerJob": {"Type": "Task", "Resource": "arn:aws:glue:..."},
-    "TrainModel": {"Type": "Task", "Resource": "arn:aws:lambda:..."},
-    "EvaluateModel": {"Type": "Task", "Resource": "arn:aws:lambda:..."},
-    "DeployIfBetter": {"Type": "Choice"},
-    "RollbackOnFailure": {"Type": "Task"}
-  }
-}
-```
-
-**Benefits**: Manages complex workflows with compensation logic, atomic operations.
-
----
-
-### 12. **Adapter Pattern**
-**Location**: `src/data_producer/dataset_loader.py`
-
-```python
-# Adapter: Converts different dataset formats to unified schema
-def normalize_paysim(df: pd.DataFrame) -> pd.DataFrame:
-    return pd.DataFrame({
-        'transaction_id': df['step'].astype(str) + '_' + df['nameOrig'],
-        'amount': df['amount'],
-        'user_id': df['nameOrig']
-    })
-
-def normalize_kaggle_cc(df: pd.DataFrame) -> pd.DataFrame:
-    return pd.DataFrame({
-        'transaction_id': 'kaggle_' + df.index.astype(str),
-        'amount': df['Amount']
-    })
-```
-
-**Benefits**: Support multiple data sources transparently.
-
----
-
-##  SOLID Principles
-
-###  **S - Single Responsibility Principle**
-
-Each component has **ONE reason to change**:
-
-| Component | Single Responsibility |
-|-----------|----------------------|
-| `validator.py` | Schema validation only |
-| `deduplicator.py` | Idempotency checks only |
-| `s3_writer.py` | S3 Parquet writes only |
-| `config.py` | Configuration management only |
-| `logger.py` | Logging only |
-| `metrics.py` | Metrics emission only |
-
-**Example**:
-```python
-#  GOOD: Delegated responsibilities
-class BronzeLayerHandler:
-    def __init__(self):
-        self.validator = Validator()        # Delegates validation
-        self.deduplicator = Deduplicator()  # Delegates deduplication
-        self.s3_writer = S3Writer()         # Delegates storage
-    
-    def process(self, event):
-        validated = self.validator.validate(event)
-        if not self.deduplicator.is_duplicate(validated['id']):
-            self.s3_writer.write(validated)
-```
-
----
-
-###  **O - Open/Closed Principle**
-
-Open for extension, closed for modification:
-
-```python
-#  Can add new schema versions without modifying existing code
-class TransactionEvent(BaseModel):
-    schema_version: str = "1.0"
-    # ... fields ...
-
-# Future: Add v2.0 without breaking v1.0
-class TransactionEventV2(TransactionEvent):
-    schema_version: str = "2.0"
-    new_field: Optional[str] = None
-
-#  Can add new ML models without modifying trainer
-class FraudModelTrainer:
-    def run_training(self):
-        self.train_logistic_regression()
-        self.train_xgboost()
-        self.train_lightgbm()
-        # self.train_neural_network()  # Future addition
-```
-
----
-
-###  **L - Liskov Substitution Principle**
-
-Subtypes are substitutable for their base types:
-
-```python
-#  JSON logger and Standard logger are substitutable
-json_logger = get_logger('service', use_json=True)
-std_logger = get_logger('service', use_json=False)
-
-# Both work identically
-json_logger.info("Message")  # Works
-std_logger.info("Message")   # Works (same interface)
-
-#  Real AWS clients and mocks are substitutable
-s3_real = boto3.client('s3')
-s3_mock = moto.mock_s3()  # Substitutable for testing
-```
-
----
-
-###  **I - Interface Segregation Principle**
-
-Clients shouldn't depend on interfaces they don't use:
-
-```python
-#  GOOD: Segregated interfaces
-class Validator:
-    def validate(self, event): ...  # Only validation methods
-
-class Deduplicator:
-    def is_duplicate(self, id): ...  # Only deduplication methods
-
-class S3Writer:
-    def write_batch(self, events): ...  # Only S3 methods
-
-#  Clients use only what they need
-metrics = get_metrics_client()
-emit_counter('requests', 1)  # Service A only needs counters
-emit_timer('latency', 0.5)   # Service B only needs timers
-```
-
----
-
-###  **D - Dependency Inversion Principle**
-
-Depend on abstractions, not concretions:
-
-```python
-#  HIGH-LEVEL: Lambda handler depends on abstraction
-def lambda_handler(event, context):
-    config = get_config()  # Abstraction (doesn't know WHERE config comes from)
-    bucket = config.bronze_bucket
-
-#  LOW-LEVEL: Implementation can change
-class Config:
-    # Could be env vars, Parameter Store, Secrets Manager
-    bronze_bucket: str = os.getenv('BRONZE_BUCKET', 'default')
-
-#  Business logic depends on abstract write_batch()
-def save_events(events):
-    writer = S3ParquetWriter(bucket='...')
-    writer.write_batch(events)  # Could swap to Database, local file, etc.
-```
-
----
-
-##  Architecture Trade-offs
-
-Key architectural decisions with **explicit trade-offs**:
-
-### 1. **Kinesis vs. Apache Kafka**
-
-**Decision**: Use AWS Kinesis Data Streams
-
-| Aspect | Kinesis | Kafka |
-|--------|---------|-------|
-| **Ops Overhead** |  Fully managed | Self-managed (MSK or EC2) |
-| **Cost** |  $11/month (1 shard) | $300/month (3-broker cluster) |
-| **Throughput** | 1 MB/s write, 2 MB/s read |  100+ MB/s per partition |
-| **Ecosystem** | Limited |  Rich (Kafka Streams, ksqlDB) |
-| **AWS Integration** |  Native (Lambda, IAM, CloudWatch) | Requires MSK |
-
-**Trade-off Accepted**: Our throughput (1000 events/sec × 1 KB = 1 MB/s) fits in 1 shard. Kafka's ecosystem not needed.
-
----
-
-### 2. **ECS Fargate vs. Lambda for API**
-
-**Decision**: Deploy FastAPI on ECS Fargate
-
-| Aspect | ECS Fargate | Lambda |
-|--------|-------------|--------|
-| **Cold Starts** |  No cold starts (always warm) | 500ms-2s cold start |
-| **Latency** |  <200ms p95 | p95 includes cold starts |
-| **Cost** | $29/month (always running) |  $3.50/month (pay-per-use) |
-| **Complexity** | Docker + ECR + ECS |  Simple ZIP upload |
-
-**Trade-off Accepted**: We pay **8x more** for ECS but get consistent sub-200ms latency. Critical for fraud detection.
-
----
-
-### 3. **DynamoDB vs. Redis for Deduplication**
-
-**Decision**: Use DynamoDB with TTL
-
-| Aspect | DynamoDB | Redis (ElastiCache) |
-|--------|----------|---------------------|
-| **Latency** |  Single-digit ms |  Sub-millisecond |
-| **Persistence** |  Durable storage | In-memory (requires snapshots) |
-| **Cost** |  $1.25/1M writes | $20/month (cache.t3.micro) |
-| **TTL** |  Built-in (automatic cleanup) | Manual expiration |
-| **Ops** |  Fully managed | Cluster management |
-
-**Trade-off Accepted**: DynamoDB provides durability + TTL at lower cost. Sub-ms latency not required for deduplication.
-
----
-
-### 4. **Glue (PySpark) vs. Lambda for Feature Engineering**
-
-**Decision**: Use AWS Glue jobs for Silver/Gold layers
-
-| Aspect | Glue (PySpark) | Lambda |
-|--------|----------------|--------|
-| **Data Volume** |  100+ GB (distributed) | 512 MB-10 GB limit |
-| **Window Functions** |  Native Spark support | Manual implementation |
-| **Cost** | $0.44/DPU-hour |  $0.83/1M invocations |
-| **Latency** | 2-5 min (batch) |  Real-time |
-
-**Trade-off Accepted**: Feature engineering has complex joins/aggregations. Glue handles large datasets efficiently. Runs batch (hourly), not per-event.
-
----
-
-### 5. **Point-in-Time Correctness**
-
-**Decision**: Use `event_timestamp` + watermark in Gold layer
-
-**Problem**: Train/serve skew causes model degradation.
-
-**Solution**:
-```python
-#  GOOD: Features use event_timestamp (not processing_timestamp)
-df_gold = df_silver.filter(F.col('event_timestamp') <= training_cutoff)
-```
-
-**Trade-off Accepted**: Slightly more complex ETL logic, but ensures no data leakage.
-
----
-
-### 6. **PII Handling: SHA256 Hashing**
-
-**Decision**: Hash `card_id` and `user_id` in Silver layer
-
-```python
-# SHA256 + salt from Secrets Manager
-def hash_pii(value: str, salt: str) -> str:
-    return hashlib.sha256(f"{value}{salt}".encode()).hexdigest()
-```
-
-| Approach | Pros | Cons |
-|----------|------|------|
-| **SHA256 Hash** |  One-way (irreversible) | Cannot recover original |
-| **Encryption** |  Reversible (with key) | Key management complexity |
-| **Tokenization** |  Reversible (lookup table) | Additional service cost |
-
-**Trade-off Accepted**: SHA256 + salt provides deterministic hashing (same ID → same hash) while protecting PII. Original IDs in Bronze (encrypted S3).
-
----
-
-##  AWS Services
-
-| Service | Purpose | Configuration |
-|---------|---------|---------------|
-| **Kinesis Data Streams** | Real-time event ingestion | 1 shard, 24h retention, KMS encryption |
-| **Lambda** | Serverless compute (Bronze, drift, alerts) | Python 3.11, 512 MB, 60s timeout |
-| **S3** | Data lake (Bronze/Silver/Gold) | SSE-S3, partitioned by date/hour |
-| **Glue** | Data Catalog + ETL (PySpark) | Glue 4.0, 2 DPUs, hourly schedule |
-| **Athena** | SQL queries on S3 | Pay per TB scanned |
-| **DynamoDB** | Deduplication, alerts, feedback | On-demand, TTL enabled, GSI for queries |
-| **Step Functions** | Orchestration (retrain workflow) | Pay per state transition |
-| **EventBridge** | Scheduling + event routing | Cron schedules for Glue jobs |
-| **ECS Fargate** | FastAPI scoring service | 2 tasks, 0.5 vCPU, 1 GB RAM |
-| **ALB** | Load balancing for ECS | Health checks, auto-scaling triggers |
-| **CloudWatch** | Logs, metrics, alarms | Structured JSON logs, custom metrics |
-| **Secrets Manager** | PII salt storage | Quarterly rotation |
-
----
-
-##  Project Structure
-
-```
-fraud-detection-aws/
-├── README.md                           # ← You are here
-├── docs/
-│   ├── GETTING_STARTED.md              # Setup guide
-│   ├── ARCHITECTURE_ANALYSIS.md        # Design patterns deep-dive
-│   ├── ADR.md                          # Architecture Decision Records
-│   └── RUNBOOK.md                      # Operations guide
-│
-├── src/
-│   ├── data_producer/                  #  Event generation
-│   │   ├── schemas.py                  # Pydantic TransactionEvent schema
-│   │   ├── producer.py                 # Kinesis batch producer
-│   │   └── dataset_loader.py           # PaySim/Kaggle normalizer
-│   │
-│   ├── bronze_layer/                   #  Lambda: Kinesis → S3
-│   │   ├── handler.py                  # Lambda entry point
-│   │   ├── validator.py                # Pydantic validation
-│   │   ├── deduplicator.py             # DynamoDB idempotency
-│   │   └── s3_writer.py                # Parquet writer (date/hour partitions)
-│   │
-│   ├── silver_layer/                   #  Glue: Feature engineering
-│   │   └── job.py                      # PySpark: velocity + aggregates + PII hash
-│   │
-│   ├── gold_layer/                     #  Glue: Training data
-│   │   └── job.py                      # PySpark: point-in-time features
-│   │
-│   ├── ml_training/                    #  Model training
-│   │   └── train.py                    # LR + XGBoost + LightGBM with MLflow
-│   │
-│   ├── api/                            #  FastAPI scoring service
-│   │   └── main.py                     # POST /score, GET /alerts, POST /feedback
-│   │
-│   ├── drift_monitor/                  #  Lambda: PSI calculation
-│   │   └── handler.py                  # Daily drift check → trigger retrain
-│   │
-│   └── common/                         #  Shared utilities
-│       ├── config.py                   # Environment config (singleton)
-│       ├── logger.py                   # Structured JSON logging
-│       ├── metrics.py                  # CloudWatch metrics client
-│       └── aws_clients.py              # Boto3 factory with retry logic
-│
-├── infrastructure/                     #  AWS CDK (TypeScript)
-│   ├── bin/app.ts                      # CDK app entry point
-│   └── lib/
-│       ├── kinesis-stack.ts            # Kinesis + Lambda + S3
-│       ├── database-stack.ts           # DynamoDB tables
-│       ├── api-stack.ts                # ECS Fargate + ALB
-│       └── monitoring-stack.ts         # CloudWatch dashboards + alarms
-│
-├── frontend/                           #  React + TypeScript
-│   └── src/
-│       └── pages/
-│           └── AlertsList.tsx          # Fraud alerts dashboard
-│
-├── tests/
-│   ├── unit/                           # PyTest unit tests
-│   ├── integration/                    # Integration tests with moto
-│   └── load/                           # API load testing
-│
-├── requirements.txt                    # Python dependencies
-├── Dockerfile                          # Multi-stage FastAPI image
-└── docker-compose.yml                  # LocalStack for dev
-```
-
----
-
-##  Data Flow
-
-```
-1. DATA INGESTION
-   PaySim Dataset → Python Producer → Kinesis Stream
-   (1000 events/sec, partitioned by user_id)
-   
-2. BRONZE LAYER (Real-time)
-   Kinesis → Lambda → Pydantic Validation → DynamoDB Dedupe → S3 Parquet
-   (Latency: <1 minute, exactly-once processing)
-   
-3. SILVER LAYER (Batch)
-   EventBridge (hourly) → Glue PySpark Job
-   ├─ Velocity features (5m, 1h, 24h windows)
-   ├─ User/merchant aggregates
-   ├─ PII tokenization (SHA256 + salt)
-   └─ Write to S3 (partitioned Parquet)
-   
-4. GOLD LAYER (Batch)
-   EventBridge (daily) → Glue PySpark Job
-   ├─ Point-in-time features (prevent leakage)
-   ├─ Training dataset generation
-   └─ Write to S3 (queryable via Athena)
-   
-5. ML TRAINING
-   Gold S3 → Python Script → MLflow Tracking
-   ├─ Logistic Regression (baseline)
-   ├─ XGBoost (production model)
-   ├─ LightGBM (comparison)
-   └─ Best model → S3 (version controlled)
-   
-6. SERVING LAYER
-   FastAPI (ECS Fargate) → Load Model from S3
-   ├─ POST /score → Fraud probability + top features
-   ├─ GET /alerts → Recent high-risk transactions
-   └─ POST /feedback → Analyst decisions
-   
-7. MONITORING
-   EventBridge (daily) → Drift Monitor Lambda
-   ├─ Calculate PSI for key features (Athena query)
-   ├─ If PSI > 0.25 → Trigger Step Functions (retrain)
-   └─ Emit CloudWatch metrics
-```
-
----
-
-## Quick Start
-
-### Prerequisites
-- AWS Account with Admin access
-- AWS CLI configured (`aws configure`)
-- Node.js 18+ (for CDK)
-- Python 3.9+
-- Docker Desktop
-
-### 1. Clone Repository
-```bash
-git clone https://github.com/yourusername/fraud-detection-aws.git
-cd fraud-detection-aws
-```
-
-### 2. Install Dependencies
-```bash
-# Python
-python -m venv venv
-source venv/bin/activate  # Windows: venv\Scripts\activate
-pip install -r requirements.txt
-
-# AWS CDK
-cd infrastructure
-npm install
-cd ..
-```
-
-### 3. Deploy Infrastructure
-```bash
-cd infrastructure
-export ENVIRONMENT=dev
-cdk bootstrap  # First time only
-cdk deploy --all
-cd ..
-```
-
-### 4. Generate Data & Train Model
-```bash
-# Send events to Kinesis
-python src/data_producer/producer.py \
-    --dataset data/paysim.csv \
-    --stream-name fraud-transactions-dev \
-    --rate 100
-
-# Run Glue jobs (wait ~5 min)
-aws glue start-job-run --job-name fraud-silver-job-dev
-aws glue start-job-run --job-name fraud-gold-job-dev
-
-# Train models
-python src/ml_training/train.py \
-    --gold-path s3://fraud-gold-dev/training/ \
-    --mlflow-uri http://localhost:5000
-```
-
-### 5. Test API
-```bash
-# Get ALB URL from CDK output
-curl -X POST http://<ALB-URL>/api/v1/score \
-    -H "Content-Type: application/json" \
-    -d '{
-        "transaction_id": "test_001",
-        "amount": 999.99,
-        "user_id": "user_123",
-        "merchant_id": "merchant_456",
-        "merchant_category": "online_retail",
-        "transaction_type": "purchase",
-        "country": "US"
-    }'
-```
-
-### 6. Launch Frontend
-```bash
-cd frontend
-npm install
-npm start
-# Open http://localhost:3000
-```
-
-**Full Guide**: See [docs/GETTING_STARTED.md](docs/GETTING_STARTED.md)
-
----
-
-##  Cost Analysis
-
-### Development Environment (~$90/month)
-
-| Service | Specification | Monthly Cost |
-|---------|--------------|--------------|
-| **Kinesis** | 1 shard × 730 hr | $11.00 |
-| **S3** | 10 GB storage + 10 GB transfer | $1.50 |
-| **DynamoDB** | On-demand (1M writes) | $1.25 |
-| **Lambda** | 1M invocations, 512 MB, 60s | $0.83 |
-| **Glue** | 2 DPU-hours/day × 30 days | $26.40 |
-| **ECS Fargate** | 2 tasks × 0.5 vCPU × 730 hr | $29.20 |
-| **ALB** | 730 hr + 1 GB processed | $17.00 |
-| **CloudWatch** | 5 GB logs + 10 metrics | $3.50 |
-| **Total** | | **~$90/month** |
-
-### Production Environment (~$400-500/month)
-
-- Scale Kinesis to 5 shards
-- ECS auto-scaling to 10 tasks
-- DynamoDB provisioned capacity
-- Reserved Capacity for predictable loads
-
-**Cost Optimization**:
-- S3 Intelligent Tiering (30% savings on old data)
-- Glue job consolidation (combine Silver/Gold)
-- Lambda provisioned concurrency (eliminate cold starts)
-- Spot instances for ML training
-
----
-
-## Tech Stack
-
-### Backend
-- **Language**: Python 3.11
-- **API**: FastAPI 0.108
-- **ML**: scikit-learn, XGBoost, LightGBM
-- **Data**: Pandas, PyArrow (Parquet)
-- **Validation**: Pydantic 2.5
-
-### Frontend
-- **Framework**: React 18 + TypeScript 5.2
-- **UI**: Material-UI (MUI)
-- **Charts**: Recharts
-- **API**: Axios with typed client
-
-### Infrastructure
-- **IaC**: AWS CDK (TypeScript)
-- **Containers**: Docker multi-stage builds
-- **AWS Services**: Kinesis, Lambda, Glue, ECS, S3, DynamoDB, Athena
-
-### ML Ops
-- **Tracking**: MLflow 2.9
-- **Drift**: PSI (Population Stability Index)
-- **Orchestration**: Step Functions
-- **Monitoring**: CloudWatch + custom metrics
-
-### Testing
-- **Unit**: PyTest + moto (AWS mocking)
-- **Integration**: LocalStack
-- **Load**: Locust (API testing)
+![Python](https://img.shields.io/badge/Python-3.11+-blue) ![FastAPI](https://img.shields.io/badge/FastAPI-REST%20API-009688) ![XGBoost](https://img.shields.io/badge/XGBoost-ML-orange) ![Kafka](https://img.shields.io/badge/Apache%20Kafka-Streaming-black) ![Keycloak](https://img.shields.io/badge/Keycloak-OIDC-4d4d4d) ![AWS CDK](https://img.shields.io/badge/AWS%20CDK-IaC-FF9900)
 
 ---
 
 ## Key Features
 
-### 1. **Exactly-Once Processing**
-- DynamoDB idempotency table with conditional writes
-- 24-hour TTL for automatic cleanup
-- Composite key: `transaction_id#event_id`
+**Data engineering**
+- **Medallion ETL pipeline:** Bronze (schema validation with Pandera, deduplication, Parquet storage), then Silver (feature engineering), then Gold (model-ready datasets and a versioned feature list).
+- **41 engineered fraud signals:** time-of-day and night-time flags, rolling velocity windows (1h / 6h / 24h / 7d transaction counts and spend), how far an amount is from the user's and merchant's typical behaviour, country-change and "impossible travel" flags.
+- **Time-based train/test split** to avoid training on data from the future.
 
-### 2. **Real-Time Feature Engineering**
-- Velocity windows: 5m, 1h, 24h
-- User aggregates: lifetime transactions, average amount
-- Merchant stats: fraud rate, transaction count
+**Machine learning**
+- **XGBoost classifier** with configurable alternatives (Logistic Regression, LightGBM) selected from `config.yaml`.
+- **Class-imbalance handling** with SMOTE, because only about 2% of transactions are fraud.
+- **MLflow experiment tracking:** parameters, metrics, feature importance and model artifacts are logged for every run.
+- **Drift monitoring** using the Population Stability Index (PSI), with low/medium/high thresholds that signal when to retrain.
 
-### 3. **PII Protection**
-- SHA256 hashing with salt (Secrets Manager)
-- Original IDs in Bronze (S3 encrypted)
-- Hashed IDs in Silver/Gold
+**Serving and streaming**
+- **FastAPI scoring service:** single and batch prediction endpoints, request validation with Pydantic, risk tiers (VERY_LOW to HIGH), health check, auto-generated OpenAPI docs.
+- **Load tested:** about 1,000 predictions/sec with p95 latency under 100 ms on a laptop with 4 workers. The Kafka streaming path was measured separately (see [Performance](#performance)).
+- **Kafka streaming:** a producer simulates live card transactions; a consumer scores each one through the API, raises alerts for high-risk transactions, and tracks precision and recall in real time.
+- **OIDC authentication:** analyst-facing endpoints need a JWT from Keycloak. The API checks the signature (keys found through OIDC discovery), issuer, audience and expiry. Machine-to-machine scoring stays separate from human login.
 
-### 4. **Point-in-Time Correctness**
-- Event timestamp (not processing timestamp)
-- Prevents train/serve skew
-- `asof_join` in Spark for historical features
-
-### 5. **Automated Drift Detection**
-- Daily PSI calculation (7 key features)
-- Athena queries for current data vs. baseline
-- Step Functions retraining workflow
-
-### 6. **Explainable AI**
-- Top contributing features per prediction
-- SHAP values (optional)
-- Feature importance from XGBoost
-
-### 7. **Auto-Scaling**
-- Kinesis: 1-10 shards based on throughput
-- ECS: 2-10 tasks based on CPU/memory
-- DynamoDB: On-demand (auto-scales)
+**Cloud design (AWS, infrastructure-as-code)**
+- AWS CDK (TypeScript) stacks for Kinesis, Lambda, DynamoDB, ECS Fargate behind an Application Load Balancer, and CloudWatch.
+- Service code for each stage in `src/`: a Kinesis ingestion Lambda with idempotent deduplication, PySpark Glue jobs with salted SHA-256 PII hashing, and a drift-monitor Lambda that starts retraining through Step Functions.
 
 ---
 
-## Success Metrics
+## Architecture
 
-| Metric | Target | Implementation |
-|--------|--------|----------------|
-| **Latency (p95)** | <200ms | ECS Fargate (no cold starts) |
-| **Throughput** | 1000 events/sec | 1 Kinesis shard |
-| **Accuracy (PR-AUC)** | >0.80 | XGBoost with class balancing |
-| **False Positive Rate** | <1% | Threshold tuning (precision@90% recall) |
-| **Uptime** | 99.9% | Multi-AZ ECS, health checks |
-| **Data Freshness** | <5 min | Hourly Glue jobs, real-time Bronze |
+### Local system (runs end to end with Docker)
 
----
+```
+ OFFLINE: learning                                ONLINE: scoring
+ ─────────────────                                ───────────────
+ scripts/download_data.py                         streaming/producer.py
+   (100k synthetic transactions)                    (simulated card swipes)
+        │                                                 │
+        v                                                 v
+ etl/bronze_layer.py   validate + dedupe          Kafka topic "transactions-raw"
+        v                                                 │
+ etl/silver_layer.py   feature engineering                v
+        v                                         streaming/consumer.py
+ etl/gold_layer.py     train/test + feature list          │  HTTP POST /predict
+        v                                                 v
+ ml/train.py           XGBoost + MLflow ───────>  api/main.py (FastAPI)
+        │              fraud_model.pkl              loads model, builds features,
+        v                                           returns probability + risk level
+ ml/drift_monitor.py   PSI drift report                   │
+                                                          v
+                                                  HIGH/MEDIUM risk -> data/alerts/*.csv
 
-## Documentation
+                       Keycloak (OIDC) ──JWT──> protected analyst endpoints
+```
 
-- **[GETTING_STARTED.md](docs/GETTING_STARTED.md)**: Step-by-step setup guide
-- **[ARCHITECTURE_ANALYSIS.md](docs/ARCHITECTURE_ANALYSIS.md)**: Design patterns deep-dive
-- **[ADR.md](docs/ADR.md)**: Architecture Decision Records with trade-offs
-- **[RUNBOOK.md](docs/RUNBOOK.md)**: Operations guide for production
-- **[API Reference](http://localhost:8000/docs)**: Auto-generated OpenAPI/Swagger UI
+### AWS design (in `src/` and `infrastructure/`)
 
----
-
-## Learning Outcomes
-
-This project demonstrates:
-
- **Event-Driven Microservices**: Kinesis, Lambda, EventBridge, async processing  
- **SOLID Principles**: Single responsibility, dependency inversion, interface segregation  
- **Design Patterns**: 12+ patterns (Factory, Singleton, Strategy, CQRS, Saga, etc.)  
- **Data Engineering**: Medallion architecture (Bronze/Silver/Gold), PySpark at scale  
- **ML Engineering**: Feature engineering, MLflow tracking, drift monitoring  
- **Cloud Architecture**: AWS serverless, IaC with CDK, cost optimization  
- **API Development**: FastAPI, Pydantic validation, async endpoints  
- **Frontend**: React + TypeScript, typed API client, Material-UI  
- **DevOps**: Docker, multi-stage builds, CI/CD-ready  
- **Observability**: Structured logging, CloudWatch metrics, alarms  
-
----
-
-## Contributing
-
-Contributions welcome! Please:
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit changes (`git commit -m 'Add amazing feature'`)
-4. Push to branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
+```
+Producer -> Kinesis -> Bronze Lambda -> S3 (Parquet) -> Glue Silver/Gold (PySpark) -> Training
+                         │ dedupe                                                     │
+                         v                                                            v
+                      DynamoDB                    ALB -> ECS Fargate (FastAPI, autoscaling 2-10 tasks)
+                                                           │
+                                                           v
+                                         DynamoDB (alerts, analyst feedback)
+                     CloudWatch dashboards + alarms  |  Drift Lambda -> Step Functions retrain
+```
 
 ---
 
-## License
+## Model Results
 
-MIT License - see [LICENSE](LICENSE) file
+From the logged MLflow run (XGBoost, test set of 20,000 transactions, decision threshold 0.5):
 
----
+| Metric | Value |
+|---|---|
+| ROC-AUC | 0.993 |
+| Recall (fraud caught) | 90.0% |
+| Precision | 53.5% |
+| F1 | 0.67 |
+| False positive rate | 1.6% |
 
-##  Contact
+**These offline numbers are inflated, and the live stream shows it.** Two reasons:
+- **Synthetic data:** fraud was generated with strong patterns such as late-night timing and online/travel merchants. That's why `is_night_time` is the top feature.
+- **Label leakage in `merchant_fraud_rate`** (the #2 feature). The Silver layer computes it over the full dataset, including each row's own label. In the test set, 100% of fraud rows have a merchant fraud rate above 1%, compared with 33% of legitimate rows. At serving time the API uses a fixed placeholder value, so this signal disappears.
 
-**Heena Khan** - hkhan520@umd.edu
-
-Project Link: [https://github.com/yourusername/fraud-detection-aws](https://github.com/yourusername/fraud-detection-aws)
-
----
-
-## Acknowledgments
-
-- **Dataset**: [PaySim Synthetic Financial Dataset](https://www.kaggle.com/datasets/ealaxi/paysim1)
-- **Architecture**: AWS Well-Architected Framework
-- **ML Best Practices**: Google's ML Engineering guidelines
-- **Design Patterns**: Gang of Four (GoF) + Cloud Patterns
+**Live result:** scoring 5,700 streamed transactions through Kafka gave **recall of 1.7%** (2 of 116 frauds caught) and precision of 11.8%. That gap between offline and live performance is a training/serving skew problem, and fixing it is the top item on the roadmap. Any real deployment would also need the decision threshold tuned to the business cost of a missed fraud versus a blocked legitimate customer.
 
 ---
 
+## Tech Stack
+
+| Area | Tools |
+|---|---|
+| Language | Python, TypeScript |
+| Data & features | pandas, NumPy, PyArrow / Parquet, Pandera, PySpark (AWS Glue) |
+| Machine learning | XGBoost, LightGBM, scikit-learn, imbalanced-learn (SMOTE), MLflow |
+| API | FastAPI, Pydantic, Uvicorn |
+| Auth | OIDC with Keycloak, PyJWT |
+| Streaming | Apache Kafka (Confluent images), kafka-python |
+| Infrastructure | Docker, Docker Compose, AWS CDK |
+| AWS (designed) | Kinesis, Lambda, S3, Glue, DynamoDB, ECS Fargate, ALB, CloudWatch, Step Functions, Secrets Manager |
+| Frontend (in progress) | React, TypeScript, Material UI |
+| Testing | pytest |
+
+---
+
+## Quick Start
+
+**Prerequisites:** Python 3.11+, Docker.
+
+```bash
+# 1. Install dependencies and create the data directories
+make setup
+
+# 2. Build the dataset and the model
+make data        # generate 100,000 synthetic transactions
+make etl         # Bronze -> Silver -> Gold
+make train       # train XGBoost, log the run to MLflow, save ml/models/fraud_model.pkl
+
+# 3. Start infrastructure (Kafka, Keycloak, MLflow, Postgres)
+docker-compose up -d
+
+# 4. Run the scoring service and the stream (separate terminals)
+make api         # http://localhost:8000/docs
+make producer    # stream transactions into Kafka
+make consumer    # score them in real time and write alerts
+```
+
+| Service | URL |
+|---|---|
+| API docs (Swagger) | http://localhost:8000/docs |
+| Kafka UI | http://localhost:8081 |
+| Keycloak | http://localhost:8180 (admin / admin, local only) |
+| MLflow UI | run `mlflow ui`, then open http://localhost:5000 |
+
+### Calling a protected endpoint
+
+```bash
+TOKEN=$(curl -s -X POST http://localhost:8180/realms/fraud-detection/protocol/openid-connect/token \
+  -d grant_type=password -d client_id=fraud-analyst-ui -d username=analyst -d password=analyst \
+  | python3 -c "import sys,json;print(json.load(sys.stdin)['access_token'])")
+
+curl -H "Authorization: Bearer $TOKEN" http://localhost:8000/model/info
+```
+
+The password login above is for local testing only. A browser frontend would use the Authorization Code flow with PKCE, which the `fraud-analyst-ui` client is set up for.
+
+---
+
+## API Reference
+
+| Method | Endpoint | Auth | Description |
+|---|---|---|---|
+| GET | `/health` | None | Service status and whether the model is loaded |
+| POST | `/predict` | None (machine caller) | Score one transaction |
+| POST | `/predict/batch` | None (machine caller) | Score up to 100 transactions |
+| GET | `/model/info` | OIDC bearer token | Model type and feature metadata |
+
+**Example request** to `POST /predict`:
+```json
+{
+  "transaction_id": "txn_001",
+  "user_id": "user_42",
+  "merchant_id": "merchant_77",
+  "amount": 2500.00,
+  "timestamp": "2026-10-07 02:13:00",
+  "merchant_category": "online",
+  "country": "US"
+}
+```
+
+**Example response:**
+```json
+{
+  "transaction_id": "txn_001",
+  "fraud_probability": 0.3329,
+  "is_fraud": false,
+  "risk_level": "LOW",
+  "top_features": {
+    "amount_x_hour": 5000.0,
+    "amount": 2500.0,
+    "amount_rounded": 2500.0,
+    "total_amount_1h": 2500.0,
+    "total_amount_24h": 2500.0
+  },
+  "timestamp": "2026-10-08T01:49:17.499570"
+}
+```
+
+---
+
+## Performance
+
+Measured with [scripts/benchmark_api.py](scripts/benchmark_api.py), which sends concurrent `POST /predict` requests with randomized transactions. Machine: Apple M3 laptop (8 cores), with the load generator running on the same machine.
+
+| Setup | Concurrent clients | Throughput | p50 | p95 | p99 |
+|---|---|---|---|---|---|
+| 1 Uvicorn worker | 1 | 327 req/s | 3.0 ms | 3.3 ms | 3.5 ms |
+| 1 Uvicorn worker | 20 | 351 req/s | 55.4 ms | 68.2 ms | 90.2 ms |
+| 4 Uvicorn workers | 20 | 731 req/s | 17.0 ms | 83.8 ms | 150.2 ms |
+| 4 Uvicorn workers | 50 | 999 req/s | 43.6 ms | 95.2 ms | 109.8 ms |
+
+What the numbers show:
+- A single prediction (feature building plus XGBoost inference) takes about **3 ms**.
+- One worker is limited by CPU. Extra concurrent clients only add queueing time, because model inference is CPU-bound and blocks that worker's event loop.
+- Throughput scales with worker processes. With 4 workers (the Dockerfile default) the API handles about **1,000 requests/sec with p95 under 100 ms**.
+- These numbers cover the API's own work only. User and merchant history are placeholders today, so a production deployment that looks up features from an online store (Redis or DynamoDB) would add that lookup time to each request.
+
+```bash
+uvicorn api.main:app --port 8000 --workers 4
+python scripts/benchmark_api.py --requests 5000 --concurrency 50
+```
+
+### Streaming pipeline (Kafka)
+
+Measured with Kafka in Docker (1 broker, topic `transactions-raw` with 1 partition) and the API running with 4 workers:
+
+| Stage | Measured rate | What limits it |
+|---|---|---|
+| Producer (`streaming/producer.py --rate 2000`) | 383 msg/s | Waits for Kafka to confirm each message before sending the next (`future.get()`) |
+| Consumer (`streaming/consumer.py`, draining a 5,700-message backlog) | 264 msg/s | Scores one message at a time with a blocking HTTP call; with 1 partition, only one consumer in the group can read |
+
+The streaming path is limited by the client code, not by Kafka or the API. The API can handle about 4 times more than the consumer currently sends. Ways to scale it: send without waiting for each confirmation, score in batches through `/predict/batch` or concurrent requests, and add partitions so several consumers can share the work.
+
+**Delivery guarantee:** the consumer uses Kafka's auto-commit, which marks a message as done on a timer whether or not it has been scored. So delivery is at-least-once or at-most-once, not exactly-once. Getting exactly-once would need manual commits after scoring plus idempotent alert writes.
+
+---
+
+## Project Structure
+
+```
+├── api/                 FastAPI scoring service (main.py) and OIDC verification (auth.py)
+├── etl/                 Bronze, Silver and Gold pipeline layers
+├── ml/                  Model training (train.py) and PSI drift monitoring
+├── streaming/           Kafka producer and real-time scoring consumer
+├── scripts/             Synthetic dataset generation and API load testing
+├── keycloak/            Keycloak realm (client and test user), imported at startup
+├── src/                 AWS service code: Lambda handlers, Glue jobs, shared AWS utilities
+├── infrastructure/      AWS CDK app (Kinesis, DynamoDB, ECS/ALB, monitoring stacks)
+├── frontend/            React alerts dashboard (in progress)
+├── notebooks/           Exploratory data analysis
+├── tests/               pytest suite (pipeline, prediction, authentication)
+├── docs/                Architecture decision records and design notes
+├── config.yaml          Central configuration: paths, features, model, API, Kafka, auth
+├── docker-compose.yml   Kafka, Zookeeper, Kafka UI, Keycloak, MLflow, Postgres
+└── Makefile             One-command workflows (setup, etl, train, api, producer, consumer, test)
+```
+
+---
+
+## Engineering Decisions
+
+- **Medallion layers instead of one script.** Each stage writes its output to disk, so a bad feature-engineering change can be re-run from Bronze without regenerating or re-ingesting data.
+- **Kafka between producer and scorer.** The transaction source doesn't wait for scoring, and traffic spikes queue up instead of overloading the API.
+- **Time-based split.** A random split would let the model learn from future transactions, which inflates offline metrics for a problem that is time-dependent by nature.
+- **Precision/recall over accuracy.** With 2% fraud, a model that never flags anything is 98% "accurate". Recall and false-positive rate are the metrics that matter.
+- **The model defines its own input schema.** The API reads the trained model's `feature_names_in_` and one-hot encodes requests the same way training does. Serving can't drift away from the columns the model was trained on, and a regression test ([tests/test_predict.py](tests/test_predict.py)) guards this.
+- **Auth split by caller type.** Human endpoints use OIDC (Keycloak). The high-throughput scoring path is meant for trusted services, so an interactive login isn't put in the way of every transaction.
+
+More detail is in [docs/ADR.md](docs/ADR.md) and [docs/ARCHITECTURE_ANALYSIS.md](docs/ARCHITECTURE_ANALYSIS.md).
+
+---
+
+## Status and Roadmap
+
+| Component | Status |
+|---|---|
+| ETL pipeline, model training, MLflow tracking | Working locally |
+| FastAPI service, OIDC authentication, Kafka streaming | Working locally |
+| AWS service code and CDK stacks | Written, not yet deployed |
+| React alerts dashboard | In progress |
+
+**Next steps**
+- Remove label leakage: compute `merchant_fraud_rate` and other aggregates using only transactions *before* each row (point-in-time features), then retrain and compare offline and live metrics.
+- Raise streaming throughput: async producer sends, batched or concurrent scoring in the consumer, more topic partitions.
+- Commit Kafka offsets manually after scoring for stronger delivery guarantees.
+- Replace placeholder user and merchant history at serving time with an online feature store (for example Redis or DynamoDB), so velocity features are real at scoring time.
+- Store predictions and alerts in a database instead of CSV files.
+- Add CI/CD (GitHub Actions: tests, Docker build, CDK deploy using OIDC federation to AWS).
+- Explain individual predictions with SHAP values.
